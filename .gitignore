@@ -1,0 +1,10 @@
+# Kirin
+src/main/java/test
+src/main/resources
+
+# Intellij Idea
+.idea
+/Kirin.iml
+
+# Maven
+target
