@@ -9,11 +9,15 @@ import kirin.core.configurator.JavaBeanConfigurator;
 import kirin.core.context.ApplicationContext;
 import kirin.core.util.BeanHelper;
 import kirin.core.wrapper.Bean;
+import kirin.reflection.KReflections;
+import kirin.reflection.collection.KCollections;
 import org.reflections.Reflections;
 
 import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,17 +54,13 @@ public class BeanFactory {
      * @return {@link Optional} of new instance
      */
     public <T> Optional<T> getNewInstance(Class<T> clazz) {
-        T bean = null;
+        T bean;
 
         if (clazz.isAnnotation()) {
             return Optional.empty();
         }
 
-        try {
-            bean = clazz.getDeclaredConstructor().newInstance();
-        } catch (InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
-            e.printStackTrace();
-        }
+        bean = KReflections.newInstance(clazz);
 
         return Optional.ofNullable(bean);
     }
@@ -77,16 +77,42 @@ public class BeanFactory {
         List<Field> fields = Arrays.stream(clazz.getDeclaredFields())
                 .filter(field -> field.isAnnotationPresent(Inject.class))
                 .collect(Collectors.toList());
+
         for (Field field : fields) {
             field.setAccessible(true);
 
-            if (field.getType().isInterface()) {
-                Class<?> implementationClass = beanConfigurator.findImplementationClass(field);
-                field.set(instance, context.getBeanInstance(implementationClass));
-            } else {
-                field.set(instance, context.getBeanInstance(field.getType()));
+            if (Collection.class.isAssignableFrom(field.getType())) {
+                injectCollection(instance, field);
+                continue;
             }
+
+            if (field.getType().isInterface()) {
+                injectImplementationInterface(instance, field);
+                continue;
+            }
+
+            field.set(instance, context.getBeanInstance(field.getType()));
         }
+    }
+
+    private <T> void injectCollection(T instance, Field field) throws IllegalAccessException {
+        ParameterizedType genericType = (ParameterizedType) field.getGenericType();
+        Type[] actualTypeArguments = genericType.getActualTypeArguments();
+
+        if (actualTypeArguments.length == 1) {
+            Type actualTypeArgument = actualTypeArguments[0];
+            List<Object> implementations = beanConfigurator.findInterfaceImplementations(actualTypeArgument);
+
+            Collection collectionForInject = KCollections.getCollectionInstanceByType(field.getType());
+            collectionForInject.addAll(implementations);
+
+            field.set(instance, collectionForInject);
+        }
+    }
+
+    private <T> void injectImplementationInterface(T instance, Field field) throws IllegalAccessException {
+        Class<?> implementationClass = beanConfigurator.findImplementationClass(field);
+        field.set(instance, context.getBeanInstance(implementationClass));
     }
 
     /**
