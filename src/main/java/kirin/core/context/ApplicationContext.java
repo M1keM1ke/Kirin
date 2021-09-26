@@ -5,8 +5,8 @@ import kirin.core.postprocessor.BeanPostProcessor;
 import kirin.core.wrapper.Bean;
 import kirin.logger.Klogger;
 import kirin.logger.LogLevel;
+import kirin.reflection.KReflections;
 
-import java.lang.reflect.InvocationTargetException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -59,14 +59,13 @@ public class ApplicationContext {
      * @param instance for call postprocessors on it
      */
     private void callPostProcessors(Object instance) {
-        for (Class<? extends BeanPostProcessor> processor : beanFactory.getBeanConfigurator().getScanner().getSubTypesOf(BeanPostProcessor.class)) {
-            BeanPostProcessor postProcessor = null;
-            try {
-                postProcessor = processor.getDeclaredConstructor().newInstance();
-            } catch (InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
-                e.printStackTrace();
-            }
-            postProcessor.process(instance);
-        }
+        beanFactory
+                .getBeanConfigurator()
+                .getScanner()
+                .getSubTypesOf(BeanPostProcessor.class)
+                .stream()
+                .map(clazz -> (BeanPostProcessor) KReflections.newInstance(clazz))
+                .forEach(processor -> processor.process(instance))
+        ;
     }
 }
